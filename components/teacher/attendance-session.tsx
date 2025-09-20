@@ -202,13 +202,13 @@ export default function AttendanceSession() {
         throw new Error(data?.error ?? "Failed to save attendance");
       }
 
-      // Some backends return {created, updated, saved}; be flexible:
-      const saved =
-        data?.saved ??
-        data?.created + data?.updated ??
-        records.length;
+      // after const data = await res.json();
+const saved =
+  typeof data?.saved === "number"
+    ? data.saved
+    : Number(data?.created ?? 0) + Number(data?.updated ?? 0) || records.length;
 
-      setMessage(`Saved ${saved} attendance record(s) for ${classLabel}.`);
+setMessage(`Saved ${saved} attendance record(s) for ${classLabel}.`);
     } catch (e: any) {
       setMessage(e?.message ?? "Failed to save attendance");
     } finally {
