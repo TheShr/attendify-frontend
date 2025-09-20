@@ -12,18 +12,18 @@ import { Play, Square, Camera, MapPin, Clock, Users } from "lucide-react";
 
 type PresentableStatus = "present" | "absent" | "late";
 
-interface DetectedFace {
-  id: string;         // MUST match students.id in DB
+export interface DetectedFace {
+  id: string;         // MUST match students.id (or student_id)
   name: string;
   confidence: number; // 0..1
   timestamp: Date;
 }
 
-const RECENT_LIMIT = 30;         // keep only last N badges
-const DETECTION_FLUSH_MS = 300;  // throttle rate for updates
+const RECENT_LIMIT = 30;
+const DETECTION_FLUSH_MS = 300;
 
 export default function AttendanceSession() {
-  const [classes, setClasses] = useState<Array<{ id: number; class_name: string; section: string | null }>>([]);
+  const [classes, setClasses] = useState<Array<{ id: number; class_name?: string; className?: string; section?: string | null }>>([]);
   const [selectedClass, setSelectedClass] = useState<string>("");
   const [sessionActive, setSessionActive] = useState(false);
   const [cameraActive, setCameraActive] = useState(false);
@@ -35,13 +35,13 @@ export default function AttendanceSession() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
-  // Refs (not reactive): fast, no re-render storms
+  // Refs
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const uniqueRef = useRef<Map<string, DetectedFace>>(new Map());
   const pendingRef = useRef<DetectedFace[]>([]);
   const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ---- Load classes once
+  // ---- Load classes once (support both {classes: []} and {ok: true, data: []})
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -49,19 +49,34 @@ export default function AttendanceSession() {
         const res = await fetch("/api/classes");
         const data = await res.json();
         if (!alive) return;
-        if (res.ok && data?.ok && Array.isArray(data.data)) {
-          setClasses(data.data);
-          if (data.data.length === 1) setSelectedClass(String(data.data[0].id));
-        }
-      } catch { /* ignore */ }
+
+        let list: any[] = [];
+        if (Array.isArray(data?.classes)) list = data.classes;
+        else if (data?.ok && Array.isArray(data?.data)) list = data.data;
+        else if (Array.isArray(data)) list = data;
+
+        const normalized = list.map((c) => ({
+          id: Number(c.id),
+          class_name: c.class_name ?? c.className ?? `Class ${c.id}`,
+          section: c.section ?? null,
+        }));
+
+        setClasses(normalized);
+        if (normalized.length === 1) setSelectedClass(String(normalized[0].id));
+      } catch {
+        /* ignore */
+      }
     })();
-    return () => { alive = false; };
+    return () => {
+      alive = false;
+    };
   }, []);
 
   const classLabel = useMemo(() => {
-    const cls = classes.find(c => String(c.id) === selectedClass);
+    const cls = classes.find((c) => String(c.id) === selectedClass);
     if (!cls) return "";
-    return `${cls.class_name}${cls.section ? ` • ${cls.section}` : ""}`;
+    const name = cls.class_name ?? cls.className ?? `Class ${cls.id}`;
+    return `${name}${cls.section ? ` • ${cls.section}` : ""}`;
   }, [classes, selectedClass]);
 
   function startSession() {
@@ -74,15 +89,13 @@ export default function AttendanceSession() {
     setSessionTime(0);
     setMessage(null);
 
-    // reset buffers
     uniqueRef.current.clear();
     pendingRef.current = [];
     setUniqueCount(0);
     setTotalScans(0);
     setRecent([]);
 
-    // 1-second timer
-    timerRef.current = setInterval(() => setSessionTime(t => t + 1), 1000);
+    timerRef.current = setInterval(() => setSessionTime((t) => t + 1), 1000);
   }
 
   async function stopSession() {
@@ -105,10 +118,8 @@ export default function AttendanceSession() {
       const pending = pendingRef.current;
       if (pending.length === 0) return;
 
-      // total scans is cheap
-      setTotalScans(t => t + pending.length);
+      setTotalScans((t) => t + pending.length);
 
-      // update unique map with best-confidence record per id
       const map = uniqueRef.current;
       for (const s of pending) {
         const prev = map.get(s.id);
@@ -116,22 +127,17 @@ export default function AttendanceSession() {
       }
       pendingRef.current = [];
 
-      // update unique count + recent list (cap)
       setUniqueCount(map.size);
-      setRecent(prev => {
-        const merged = [...prev, ...pending].slice(-RECENT_LIMIT);
-        return merged;
-      });
+      setRecent((prev) => [...prev, ...pending].slice(-RECENT_LIMIT));
     }, DETECTION_FLUSH_MS);
   }
 
-  // Called by CameraFeed at high FPS -> we throttle updates into small batches
+  // Called by CameraFeed
   function handleFaceDetected(faces: DetectedFace[]) {
     if (!faces || faces.length === 0) return;
-    // normalize timestamps (ensure Date)
-    const normalized = faces.map(f => ({
+    const normalized = faces.map((f) => ({
       ...f,
-      timestamp: f.timestamp instanceof Date ? f.timestamp : new Date(f.timestamp as any)
+      timestamp: f.timestamp instanceof Date ? f.timestamp : new Date(f.timestamp as any),
     }));
     pendingRef.current.push(...normalized);
     scheduleFlush();
@@ -148,7 +154,7 @@ export default function AttendanceSession() {
     scheduleFlush();
   }
 
-  // Cleanup on unmount
+  // Cleanup
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
@@ -156,7 +162,7 @@ export default function AttendanceSession() {
     };
   }, []);
 
-  // Save to API using your schema
+  // Save to backend: POST /api/attendance/manual
   async function saveAttendance() {
     if (!selectedClass) {
       setMessage("No class selected.");
@@ -172,27 +178,37 @@ export default function AttendanceSession() {
     setMessage(null);
     try {
       const date = new Date().toISOString().slice(0, 10);
-      const items = Array.from(uniq.values()).map(s => ({
-        student_id: Number(s.id),            // must exist & be enrolled
-        status: "present",                   // normalize late->present for current schema
-        time: s.timestamp.toISOString(),
-        recognized_name: s.name,
+      // backend expects: { classId, date, records: [{studentId, status}] }
+      const records = Array.from(uniq.values()).map((s) => ({
+        studentId: Number(s.id), // enrolled student_id
+        status: "present" as const,
+        // optional fields if your API uses them:
+        recognizedName: s.name,
+        // remark: "face",
       }));
 
-      const res = await fetch("/api/attendance/history", {
+      const res = await fetch("/api/attendance/manual", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          class_id: Number(selectedClass),
+          classId: Number(selectedClass),
           date,
-          items,
-          source: "facial",
+          records,
         }),
       });
       const data = await res.json();
-      if (!res.ok || !data?.ok) throw new Error(data?.error ?? "Failed to save attendance");
 
-      setMessage(`Saved ${data.inserted} attendance record(s) for ${classLabel}.`);
+      if (!res.ok) {
+        throw new Error(data?.error ?? "Failed to save attendance");
+      }
+
+      // Some backends return {created, updated, saved}; be flexible:
+      const saved =
+        data?.saved ??
+        data?.created + data?.updated ??
+        records.length;
+
+      setMessage(`Saved ${saved} attendance record(s) for ${classLabel}.`);
     } catch (e: any) {
       setMessage(e?.message ?? "Failed to save attendance");
     } finally {
@@ -200,7 +216,9 @@ export default function AttendanceSession() {
     }
   }
 
-  const timeMMSS = `${String(Math.floor(sessionTime / 60)).padStart(2, "0")}:${String(sessionTime % 60).padStart(2, "0")}`;
+  const timeMMSS = `${String(Math.floor(sessionTime / 60)).padStart(2, "0")}:${String(
+    sessionTime % 60,
+  ).padStart(2, "0")}`;
 
   return (
     <div className="space-y-6">
@@ -220,11 +238,14 @@ export default function AttendanceSession() {
                 <SelectValue placeholder="Choose a class" />
               </SelectTrigger>
               <SelectContent>
-                {classes.map((cls) => (
-                  <SelectItem key={cls.id} value={String(cls.id)}>
-                    {cls.class_name}{cls.section ? ` • ${cls.section}` : ""}
-                  </SelectItem>
-                ))}
+                {classes.map((cls) => {
+                  const label = (cls.class_name ?? cls.className ?? `Class ${cls.id}`) + (cls.section ? ` • ${cls.section}` : "");
+                  return (
+                    <SelectItem key={cls.id} value={String(cls.id)}>
+                      {label}
+                    </SelectItem>
+                  );
+                })}
               </SelectContent>
             </Select>
           </div>
@@ -305,7 +326,7 @@ export default function AttendanceSession() {
           <CameraFeed
             isActive={cameraActive}
             onToggle={setCameraActive}
-            onFaceDetected={handleFaceDetected}
+            onFaceDetected={handleFaceDetected} // ✅ ensure CameraFeedProps includes this
           />
           <GeofencingStatus isActive={sessionActive} />
         </div>

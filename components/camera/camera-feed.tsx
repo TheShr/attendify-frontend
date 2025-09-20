@@ -1,161 +1,168 @@
-﻿"use client"
+﻿"use client";
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react";
 
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Camera, CameraOff, Users, AlertCircle } from "lucide-react"
-import { apiJson } from "@/lib/api"
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Camera, CameraOff, Users, AlertCircle } from "lucide-react";
+import { apiJson } from "@/lib/api";
 
 export interface AttendanceMarkResult {
-  matched: boolean
-  studentId: number | null
-  username?: string | null
-  name?: string | null
-  recognizedName?: string | null
-  distance: number | null
-  score: number | null
-  threshold: number
-  createdAt: string
-  source?: string
-  classId?: number | null
-  attendanceRecorded?: boolean
+  matched: boolean;
+  studentId: number | null;
+  username?: string | null;
+  name?: string | null;
+  recognizedName?: string | null;
+  distance: number | null;
+  score: number | null;
+  threshold: number;
+  createdAt: string;
+  source?: string;
+  classId?: number | null;
+  attendanceRecorded?: boolean;
+}
+
+export interface DetectedFace {
+  id: string;           // student id as string
+  name: string;
+  confidence: number;   // 0..1
+  timestamp: Date;
 }
 
 interface CameraFeedProps {
-  isActive: boolean
-  onToggle: (active: boolean) => void
-  onRecognized?: (result: AttendanceMarkResult) => void
-  classId?: number | null
+  isActive: boolean;
+  onToggle: (active: boolean) => void;
+  // 🔹 keep your original callback
+  onRecognized?: (result: AttendanceMarkResult) => void;
+  // 🔹 add compatibility for the parent component
+  onFaceDetected?: (faces: DetectedFace[]) => void;
+  classId?: number | null;
 }
 
-export function CameraFeed({ isActive, onToggle, onRecognized, classId }: CameraFeedProps) {
-  const videoRef = useRef<HTMLVideoElement>(null)
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const [stream, setStream] = useState<MediaStream | null>(null)
-  const [error, setError] = useState<string>("")
-  const [frameCount, setFrameCount] = useState(0)
-  const [records, setRecords] = useState<AttendanceMarkResult[]>([])
-  const intervalRef = useRef<NodeJS.Timeout | null>(null)
-  const inFlightRef = useRef(false)
+export function CameraFeed({
+  isActive,
+  onToggle,
+  onRecognized,
+  onFaceDetected,
+  classId,
+}: CameraFeedProps) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [stream, setStream] = useState<MediaStream | null>(null);
+  const [error, setError] = useState<string>("");
+  const [frameCount, setFrameCount] = useState(0);
+  const [records, setRecords] = useState<AttendanceMarkResult[]>([]);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const inFlightRef = useRef(false);
 
   useEffect(() => {
-    if (isActive) {
-      startCamera()
-    } else {
-      stopCamera()
-    }
-
-    return () => {
-      stopCamera()
-    }
-  }, [isActive])
+    if (isActive) startCamera();
+    else stopCamera();
+    return stopCamera;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive]);
 
   const startCamera = async () => {
     try {
       const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-          facingMode: "user",
-        },
+        video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: "user" },
         audio: false,
-      })
+      });
 
-      setStream(mediaStream)
-      setError("")
-      inFlightRef.current = false
+      setStream(mediaStream);
+      setError("");
+      inFlightRef.current = false;
 
       if (videoRef.current) {
-        videoRef.current.srcObject = mediaStream
-        await videoRef.current.play()
+        videoRef.current.srcObject = mediaStream;
+        await videoRef.current.play();
       }
-
-      beginFrameCapture()
+      beginFrameCapture();
     } catch (err) {
-      console.error("Error accessing camera:", err)
-      setError("Unable to access camera. Please check permissions.")
-      onToggle(false)
+      console.error("Error accessing camera:", err);
+      setError("Unable to access camera. Please check permissions.");
+      onToggle(false);
     }
-  }
+  };
 
   const stopCamera = () => {
     if (intervalRef.current) {
-      clearInterval(intervalRef.current)
-      intervalRef.current = null
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
     }
-
     if (stream) {
-      stream.getTracks().forEach((track) => track.stop())
-      setStream(null)
+      stream.getTracks().forEach((t) => t.stop());
+      setStream(null);
     }
+    if (videoRef.current) videoRef.current.srcObject = null;
 
-    if (videoRef.current) {
-      videoRef.current.srcObject = null
-    }
-
-    inFlightRef.current = false
-    setRecords([])
-    setFrameCount(0)
-  }
+    inFlightRef.current = false;
+    setRecords([]);
+    setFrameCount(0);
+  };
 
   const beginFrameCapture = () => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current)
-    }
-
+    if (intervalRef.current) clearInterval(intervalRef.current);
     intervalRef.current = setInterval(() => {
-      if (!isActive) return
-      captureAndAnalyzeFrame()
-    }, 5000)
-  }
+      if (!isActive) return;
+      captureAndAnalyzeFrame();
+    }, 5000);
+  };
 
   const captureAndAnalyzeFrame = async () => {
-    if (inFlightRef.current) {
-      return
-    }
+    if (inFlightRef.current) return;
+    if (!videoRef.current || !canvasRef.current) return;
 
-    if (!videoRef.current || !canvasRef.current) return
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
 
-    const video = videoRef.current
-    const canvas = canvasRef.current
-    const ctx = canvas.getContext("2d")
-    if (!ctx) return
-
-    canvas.width = video.videoWidth
-    canvas.height = video.videoHeight
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
-    setFrameCount((prev) => prev + 1)
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    setFrameCount((prev) => prev + 1);
 
     try {
-      inFlightRef.current = true
-      const dataUrl = canvas.toDataURL("image/jpeg", 0.85)
-      const payload: Record<string, unknown> = { image: dataUrl, source: "webcam" }
-      if (typeof classId === "number" && Number.isFinite(classId)) {
-        payload.classId = classId
-      }
+      inFlightRef.current = true;
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+      const payload: Record<string, unknown> = { image: dataUrl, source: "webcam" };
+      if (typeof classId === "number" && Number.isFinite(classId)) payload.classId = classId;
+
+      // NOTE: apiJson should already prepend your backend base URL
       const result = await apiJson<AttendanceMarkResult>("/attendance/mark", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
-      })
+      });
 
-      setRecords((prev) => [...prev, result].slice(-10))
-      onRecognized?.(result)
+      setRecords((prev) => [...prev, result].slice(-10));
+
+      // 1) keep your original callback
+      onRecognized?.(result);
+
+      // 2) also support the parent’s onFaceDetected
+      if (result.matched && result.studentId !== null) {
+        const face: DetectedFace = {
+          id: String(result.studentId),
+          name: result.recognizedName || result.name || result.username || `ID ${result.studentId}`,
+          confidence: typeof result.score === "number" ? result.score : 0,
+          timestamp: new Date(result.createdAt),
+        };
+        onFaceDetected?.([face]);
+      }
     } catch (err) {
-      console.error("Error sending frame to attendance endpoint:", err)
-      setError("Unable to send frame to attendance service.")
+      console.error("Error sending frame to attendance endpoint:", err);
+      setError("Unable to send frame to attendance service.");
     } finally {
-      inFlightRef.current = false
+      inFlightRef.current = false;
     }
-  }
+  };
 
-  const handleToggle = () => {
-    onToggle(!isActive)
-  }
+  const handleToggle = () => onToggle(!isActive);
 
-  const latestRecords = records.slice().reverse()
+  const latestRecords = records.slice().reverse();
 
   return (
     <Card>
@@ -182,6 +189,7 @@ export function CameraFeed({ isActive, onToggle, onRecognized, classId }: Camera
           </div>
         </div>
       </CardHeader>
+
       <CardContent className="space-y-4">
         {error && (
           <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-md">
@@ -210,7 +218,7 @@ export function CameraFeed({ isActive, onToggle, onRecognized, classId }: Camera
           )}
 
           {isActive && (
-            <div className="absolute top-2 left-2 bg-black bg-opacity-50 text-white px-2 py-1 rounded text-xs">
+            <div className="absolute top-2 left-2 bg-black/50 text-white px-2 py-1 rounded text-xs">
               Frames: {frameCount}
             </div>
           )}
@@ -255,5 +263,5 @@ export function CameraFeed({ isActive, onToggle, onRecognized, classId }: Camera
         )}
       </CardContent>
     </Card>
-  )
+  );
 }
