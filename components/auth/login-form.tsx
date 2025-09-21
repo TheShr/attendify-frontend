@@ -11,14 +11,18 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Eye, EyeOff, User, Lock, UserCheck } from "lucide-react"
 
 const getApiBase = () => {
-  const base = process.env.NEXT_PUBLIC_API_URL;
+  const base = process.env.NEXT_PUBLIC_API_URL
   if (!base || base.length === 0) {
-    return null;
+    return null
   }
-  return base.endsWith("/") ? base.slice(0, -1) : base;
-};
+  return base.endsWith("/") ? base.slice(0, -1) : base
+}
 
-export function LoginForm() {
+type LoginFormProps = {
+  redirectTo?: string | null
+}
+
+export function LoginForm({ redirectTo }: LoginFormProps = {}) {
   const [showPassword, setShowPassword] = useState(false)
   const [userType, setUserType] = useState<string | undefined>(undefined)
   const [username, setUsername] = useState("")
@@ -34,8 +38,9 @@ export function LoginForm() {
     setIsLoading(true)
     setError(null)
 
-    const returnTo = searchParams.get("returnTo")
-    const safeReturnTo = returnTo && returnTo.startsWith("/") ? returnTo : null
+    const returnToParam = searchParams.get("returnTo")
+    const resolvedReturnTo = redirectTo ?? returnToParam
+    const safeReturnTo = resolvedReturnTo && resolvedReturnTo.startsWith("/") ? resolvedReturnTo : null
 
     if (disableAuth) {
       const destination =
