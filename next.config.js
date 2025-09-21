@@ -7,7 +7,7 @@ const nextConfig = {
         { source: '/api/:path*', destination: 'http://localhost:5000/api/:path*' },
       ]
     }
-    const apiOrigin = process.env.API_ORIGIN
+    const apiOrigin = process.env.API_ORIGIN // https://attendify-wnl8.onrender.com
     if (apiOrigin) {
       return [
         {
@@ -19,5 +19,4 @@ const nextConfig = {
     return []
   },
 }
-
 module.exports = nextConfig
