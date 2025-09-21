@@ -2,7 +2,7 @@
 
 import type React from "react"
 import { useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -18,16 +18,36 @@ export function LoginForm() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
+  const searchParams = useSearchParams()
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
     setError(null)
 
+    const returnTo = searchParams.get("returnTo")
+    const safeReturnTo = returnTo && returnTo.startsWith("/") ? returnTo : null
+
+    const destination =
+      safeReturnTo ??
+      (userType === "teacher"
+        ? "/teacher"
+        : userType === "student"
+        ? "/student"
+        : userType === "admin"
+        ? "/admin"
+        : "/")
+
+    router.replace(destination)
+    setIsLoading(false)
+    return
+
+    /*
+    // Original auth flow (preserved for reinstating real authentication)
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/login`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/login`, {
         method: "POST",
-        credentials: "include", // 🔑 crucial: allow cookies
+        credentials: "include", // include cookies for backend JWT
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username, password }),
       })
@@ -37,9 +57,14 @@ export function LoginForm() {
         throw new Error(err.error || "Login failed")
       }
 
-      // backend already sets cookie → no need to store token manually
+      // Backend sets cookie; no manual token storage needed
       const data = await res.json()
       console.log("Login success:", data)
+
+      if (safeReturnTo) {
+        router.replace(safeReturnTo)
+        return
+      }
 
       // Redirect based on user type dropdown
       switch (userType) {
@@ -62,6 +87,7 @@ export function LoginForm() {
     } finally {
       setIsLoading(false)
     }
+    */
   }
 
   return (
@@ -148,3 +174,5 @@ export function LoginForm() {
     </Card>
   )
 }
+
+
