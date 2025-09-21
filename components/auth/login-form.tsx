@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -17,20 +16,31 @@ export function LoginForm() {
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const router = useRouter()
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
+    setError(null)
 
     try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000))
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/login`, {
+        method: "POST",
+        credentials: "include", // 🔑 include cookies in request/response
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password })
+      })
 
-      // Store user info in localStorage (in real app, use proper auth)
-      localStorage.setItem("user", JSON.stringify({ username, userType: userType ?? "" }))
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || "Login failed")
+      }
 
-      // Redirect based on user type
+      const data = await res.json()
+
+      // No need to save token in localStorage (cookie is already set by backend)
+      // Just redirect based on userType selection
       switch (userType) {
         case "teacher":
           router.push("/teacher")
@@ -42,10 +52,12 @@ export function LoginForm() {
           router.push("/admin")
           break
         default:
+          router.push("/") // fallback
           break
       }
-    } catch (error) {
-      console.error("Login failed:", error)
+    } catch (err: any) {
+      console.error("Login error:", err)
+      setError(err.message || "Unexpected error")
     } finally {
       setIsLoading(false)
     }
@@ -55,7 +67,9 @@ export function LoginForm() {
     <Card className="w-full shadow-lg">
       <CardHeader className="space-y-1">
         <CardTitle className="text-2xl font-bold text-center">Sign In</CardTitle>
-        <CardDescription className="text-center">Enter your credentials to access your dashboard</CardDescription>
+        <CardDescription className="text-center">
+          Enter your credentials to access your dashboard
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleLogin} className="space-y-4">
@@ -122,6 +136,8 @@ export function LoginForm() {
               </Button>
             </div>
           </div>
+
+          {error && <p className="text-sm text-red-500">{error}</p>}
 
           <Button type="submit" className="w-full" disabled={isLoading}>
             {isLoading ? "Signing in..." : "Sign In"}
