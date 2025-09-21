@@ -1,16 +1,23 @@
 ﻿'use client'
 
-import { useState } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { Card } from '@/components/ui/card'
 
 export default function LoginPage() {
   const router = useRouter()
-  const search = useSearchParams()
-  const justRegistered = search?.get('registered') === '1'
+  const [justRegistered, setJustRegistered] = useState(false)
   const [role, setRole] = useState('')
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+
+  // Read ?registered=1 from the URL on the client
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search)
+      setJustRegistered(params.get('registered') === '1')
+    }
+  }, [])
 
   function handleLogin(e: React.FormEvent) {
     e.preventDefault()
@@ -21,7 +28,7 @@ export default function LoginPage() {
       return
     }
 
-    const user = { role, name: username, email: username + '@example.com' }
+    const user = { role, name: username, email: `${username}@example.com` }
     localStorage.setItem('user', JSON.stringify(user))
 
     if (role === 'STUDENT') router.push('/student')
@@ -37,7 +44,9 @@ export default function LoginPage() {
       {/* Heading section outside the box */}
       <div className="text-center">
         <h1 className="text-4xl font-bold">Attendify</h1>
-        <p className="text-sm text-muted-foreground">AI-powered attendance management system</p>
+        <p className="text-sm text-muted-foreground">
+          AI-powered attendance management system
+        </p>
       </div>
 
       {/* The white card with form stays below */}
@@ -51,7 +60,11 @@ export default function LoginPage() {
 
           <div>
             <label className="block text-sm font-medium">User Type</label>
-            <select value={role} onChange={(e) => setRole(e.target.value)} className="mt-1 block w-full border rounded-md p-2">
+            <select
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+              className="mt-1 block w-full border rounded-md p-2"
+            >
               <option value="">Select your role</option>
               <option value="STUDENT">Student</option>
               <option value="TEACHER">Teacher</option>
@@ -64,21 +77,44 @@ export default function LoginPage() {
 
           <div>
             <label className="block text-sm font-medium">Username</label>
-            <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} className="mt-1 block w-full border rounded-md p-2" />
+            <input
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              className="mt-1 block w-full border rounded-md p-2"
+            />
           </div>
 
           <div>
             <label className="block text-sm font-medium">Password</label>
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="mt-1 block w-full border rounded-md p-2" />
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="mt-1 block w-full border rounded-md p-2"
+            />
           </div>
 
-          <button type="submit" className="w-full bg-black text-white rounded-md py-2">Sign In</button>
+          <button type="submit" className="w-full bg-black text-white rounded-md py-2">
+            Sign In
+          </button>
+
           <p className="text-xs text-center text-gray-500">
-            Need public insights? <a href="/dept" className="underline">Education Dept</a> &middot; <a href="/policymaker" className="underline">Policymaker</a>
+            Need public insights?{' '}
+            <a href="/dept" className="underline">
+              Education Dept
+            </a>{' '}
+            &middot{' '}
+            <a href="/policymaker" className="underline">
+              Policymaker
+            </a>
           </p>
+
           <p className="text-xs text-center text-gray-500">
             Need an account?{' '}
-            <a href="/admin/register" className="underline text-blue-600">Register as Admin</a>
+            <a href="/admin/register" className="underline text-blue-600">
+              Register as Admin
+            </a>
           </p>
         </form>
       </Card>
