@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { LoginForm } from "@/components/auth/login-form";
 
@@ -5,7 +6,9 @@ export const metadata = {
   title: "Login",
 };
 
-export default function LoginPage() {
+export const dynamic = "force-dynamic";
+
+function LoginContent() {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-b from-gray-50 to-white px-4 py-16 space-y-6">
       <div className="text-center">
@@ -24,6 +27,14 @@ export default function LoginPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-sm text-muted-foreground">Loading...</div>}>
+      <LoginContent />
+    </Suspense>
   );
 }
 
