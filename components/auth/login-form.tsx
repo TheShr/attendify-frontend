@@ -10,6 +10,14 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Eye, EyeOff, User, Lock, UserCheck } from "lucide-react"
 
+const getApiBase = () => {
+  const base = process.env.NEXT_PUBLIC_API_URL;
+  if (!base || base.length === 0) {
+    return null;
+  }
+  return base.endsWith("/") ? base.slice(0, -1) : base;
+};
+
 export function LoginForm() {
   const [showPassword, setShowPassword] = useState(false)
   const [userType, setUserType] = useState<string | undefined>(undefined)
@@ -19,6 +27,7 @@ export function LoginForm() {
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
   const searchParams = useSearchParams()
+  const disableAuth = process.env.NEXT_PUBLIC_DISABLE_AUTH === "true"
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -28,66 +37,69 @@ export function LoginForm() {
     const returnTo = searchParams.get("returnTo")
     const safeReturnTo = returnTo && returnTo.startsWith("/") ? returnTo : null
 
-    const destination =
-      safeReturnTo ??
-      (userType === "teacher"
-        ? "/teacher"
-        : userType === "student"
-        ? "/student"
-        : userType === "admin"
-        ? "/admin"
-        : "/")
+    if (disableAuth) {
+      const destination =
+        safeReturnTo ??
+        (userType === "teacher"
+          ? "/teacher"
+          : userType === "student"
+          ? "/student"
+          : userType === "admin"
+          ? "/admin"
+          : "/")
 
-    router.replace(destination)
-    setIsLoading(false)
-    return
+      router.replace(destination)
+      setIsLoading(false)
+      return
+    }
 
-    /*
-    // Original auth flow (preserved for reinstating real authentication)
+    const endpointBase = getApiBase()
+    const loginUrl = endpointBase ? `${endpointBase}/auth/login` : "/api/auth/login"
+
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/login`, {
+      const res = await fetch(loginUrl, {
         method: "POST",
         credentials: "include", // include cookies for backend JWT
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({
+          username,
+          password,
+          role: userType,
+        }),
       })
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
-        throw new Error(err.error || "Login failed")
+        throw new Error(err.error || err.message || "Login failed")
       }
 
-      // Backend sets cookie; no manual token storage needed
-      const data = await res.json()
-      console.log("Login success:", data)
+      await res.json().catch(() => ({}))
 
       if (safeReturnTo) {
         router.replace(safeReturnTo)
         return
       }
 
-      // Redirect based on user type dropdown
       switch (userType) {
         case "teacher":
-          router.push("/teacher")
+          router.replace("/teacher")
           break
         case "student":
-          router.push("/student")
+          router.replace("/student")
           break
         case "admin":
-          router.push("/admin")
+          router.replace("/admin")
           break
         default:
-          router.push("/") // fallback
+          router.replace("/")
           break
       }
     } catch (err: any) {
       console.error("Login error:", err)
-      setError(err.message || "Unexpected error")
+      setError(err?.message || "Unexpected error")
     } finally {
       setIsLoading(false)
     }
-    */
   }
 
   return (
@@ -174,5 +186,3 @@ export function LoginForm() {
     </Card>
   )
 }
-
-

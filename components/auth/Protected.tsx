@@ -8,22 +8,33 @@ type ProtectedProps = {
   children: ReactNode;
 };
 
+const getApiBase = () => {
+  const base = process.env.NEXT_PUBLIC_API_URL;
+  if (!base || base.length === 0) {
+    return null;
+  }
+  return base.endsWith("/") ? base.slice(0, -1) : base;
+};
+
 export default function Protected({ children }: ProtectedProps) {
-  const bypassAuth = true;
+  const disableAuth = process.env.NEXT_PUBLIC_DISABLE_AUTH === "true";
+  if (disableAuth) {
+    return <>{children}</>;
+  }
+
   const router = useRouter();
   const pathname = usePathname();
-  const [checking, setChecking] = useState(!bypassAuth);
+  const [checking, setChecking] = useState(true);
 
   useEffect(() => {
-    if (bypassAuth) {
-      return;
-    }
-
     let alive = true;
+
+    const endpointBase = getApiBase();
+    const roleUrl = endpointBase ? `${endpointBase}/auth/role` : "/api/auth/role";
 
     (async () => {
       try {
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/role`, {
+        const res = await fetch(roleUrl, {
           credentials: "include",
         });
 
@@ -34,7 +45,7 @@ export default function Protected({ children }: ProtectedProps) {
         if (alive) {
           setChecking(false);
         }
-      } catch {
+      } catch (error) {
         const q = new URLSearchParams({ returnTo: pathname || "/" }).toString();
         router.replace(`/login?${q}`);
       }
@@ -43,11 +54,7 @@ export default function Protected({ children }: ProtectedProps) {
     return () => {
       alive = false;
     };
-  }, [bypassAuth, pathname, router]);
-
-  if (bypassAuth) {
-    return <>{children}</>;
-  }
+  }, [pathname, router]);
 
   if (checking) {
     return null;
