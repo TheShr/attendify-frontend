@@ -1,13 +1,23 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   async rewrites() {
-    return [
-      {
-        source: "/api/:path*",
-        destination: "http://localhost:5000/api/:path*",
-      },
-    ];
+    const isDev = process.env.NODE_ENV === 'development' && !process.env.VERCEL
+    if (isDev) {
+      return [
+        { source: '/api/:path*', destination: 'http://localhost:5000/api/:path*' },
+      ]
+    }
+    const apiOrigin = process.env.API_ORIGIN
+    if (apiOrigin) {
+      return [
+        {
+          source: '/api/:path*',
+          destination: `${apiOrigin.replace(/\/$/, '')}/api/:path*`,
+        },
+      ]
+    }
+    return []
   },
-};
+}
 
-module.exports = nextConfig;
+module.exports = nextConfig
