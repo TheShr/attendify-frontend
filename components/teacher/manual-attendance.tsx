@@ -22,9 +22,12 @@ export interface ManualAttendanceSummary {
   statusSummary: Record<string, number>
 }
 
+export type PresentableStatus = "present" | "absent" | "late"
+
 interface ManualAttendanceProps {
   classId: string | number | null
   onSubmit?: (summary: ManualAttendanceSummary) => void
+  onAddStudent?: (student: { id: string; name: string; status?: PresentableStatus }) => void // ← added
 }
 
 interface StudentOption {
@@ -46,7 +49,7 @@ function getDefaultTime(): string {
   return now.toISOString().slice(11, 16)
 }
 
-function ManualAttendance({ classId, onSubmit }: ManualAttendanceProps) {
+function ManualAttendance({ classId, onSubmit, onAddStudent }: ManualAttendanceProps) {
   const { toast } = useToast()
   const [students, setStudents] = useState<StudentOption[]>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -58,16 +61,10 @@ function ManualAttendance({ classId, onSubmit }: ManualAttendanceProps) {
   const [isSaving, setIsSaving] = useState(false)
 
   const numericClassId = useMemo(() => {
-    if (classId === null || classId === undefined) {
-      return null
-    }
-    if (typeof classId === "number") {
-      return Number.isFinite(classId) ? classId : null
-    }
+    if (classId === null || classId === undefined) return null
+    if (typeof classId === "number") return Number.isFinite(classId) ? classId : null
     const trimmed = classId.trim()
-    if (!trimmed) {
-      return null
-    }
+    if (!trimmed) return null
     const value = Number(trimmed)
     return Number.isFinite(value) ? value : null
   }, [classId])
@@ -84,18 +81,17 @@ function ManualAttendance({ classId, onSubmit }: ManualAttendanceProps) {
       setIsLoading(true)
       setLoadError(null)
       try {
+        // apiJson usually prefixes /api; this path matches your backend /api/students
         const data = await apiJson<{ students: StudentOption[] }>(`/students?classId=${numericClassId}`)
         if (!active) return
         setStudents(data.students ?? [])
         setSelection({})
-      } catch (error) {
+      } catch {
         if (!active) return
         setLoadError("Unable to load enrolled students for the selected class.")
         setStudents([])
       } finally {
-        if (active) {
-          setIsLoading(false)
-        }
+        if (active) setIsLoading(false)
       }
     }
 
@@ -119,20 +115,26 @@ function ManualAttendance({ classId, onSubmit }: ManualAttendanceProps) {
     })
   }, [students, searchTerm])
 
-  const presentCount = useMemo(() => {
-    return Object.keys(selection).length
-  }, [selection])
+  const presentCount = useMemo(() => Object.keys(selection).length, [selection])
 
-  const lateCount = useMemo(() => {
-    return Object.values(selection).filter((status) => status === "late").length
-  }, [selection])
+  const lateCount = useMemo(() => Object.values(selection).filter((s) => s === "late").length, [selection])
 
   const handleToggleStudent = (studentId: number, value: boolean | "indeterminate") => {
     const isChecked = value === true
     setSelection((prev) => {
       const next = { ...prev }
       if (isChecked) {
+        // default to "present" if not already selected
         next[studentId] = next[studentId] ?? "present"
+        // notify parent immediately (for live badges/counters, etc.)
+        const student = students.find((s) => s.studentId === studentId)
+        if (student) {
+          onAddStudent?.({
+            id: String(student.studentId),
+            name: student.name,
+            status: next[studentId] as PresentableStatus,
+          })
+        }
       } else {
         delete next[studentId]
       }
@@ -141,13 +143,24 @@ function ManualAttendance({ classId, onSubmit }: ManualAttendanceProps) {
   }
 
   const handleStatusChange = (studentId: number, status: "present" | "late") => {
-    setSelection((prev) => ({ ...prev, [studentId]: status }))
+    setSelection((prev) => {
+      const next = { ...prev, [studentId]: status }
+      // also surface the status change upward (optional, but nice)
+      const student = students.find((s) => s.studentId === studentId)
+      if (student) {
+        onAddStudent?.({
+          id: String(student.studentId),
+          name: student.name,
+          status: status as PresentableStatus,
+        })
+      }
+      return next
+    })
   }
 
   const handleSubmit = async () => {
-    if (numericClassId == null || students.length === 0) {
-      return
-    }
+    if (numericClassId == null || students.length === 0) return
+
     setIsSaving(true)
     try {
       const records = students.map((student) => {
@@ -165,6 +178,7 @@ function ManualAttendance({ classId, onSubmit }: ManualAttendanceProps) {
         records,
       }
 
+      // backend expects POST /api/attendance/manual (apiJson already prefixes /api)
       const response = await apiJson<ManualAttendanceSummary>("/attendance/manual", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -220,7 +234,7 @@ function ManualAttendance({ classId, onSubmit }: ManualAttendanceProps) {
               id="attendance-date"
               type="date"
               value={attendanceDate}
-              onChange={(event) => setAttendanceDate(event.target.value)}
+              onChange={(e) => setAttendanceDate(e.target.value)}
               disabled={isSaving}
             />
           </div>
@@ -230,7 +244,7 @@ function ManualAttendance({ classId, onSubmit }: ManualAttendanceProps) {
               id="attendance-time"
               type="time"
               value={attendanceTime}
-              onChange={(event) => setAttendanceTime(event.target.value)}
+              onChange={(e) => setAttendanceTime(e.target.value)}
               disabled={isSaving}
             />
           </div>
@@ -244,7 +258,7 @@ function ManualAttendance({ classId, onSubmit }: ManualAttendanceProps) {
               id="student-search"
               placeholder="Search by name, roll number, or username"
               value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
+              onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-8"
               disabled={!hasClassSelected}
             />
@@ -263,7 +277,7 @@ function ManualAttendance({ classId, onSubmit }: ManualAttendanceProps) {
         <ScrollArea className="h-72 rounded-md border">
           <div className="divide-y">
             {isLoading ? (
-              <div className="p-4 text-sm text-muted-foreground">Loading students?</div>
+              <div className="p-4 text-sm text-muted-foreground">Loading students…</div>
             ) : filteredStudents.length === 0 ? (
               <div className="p-4 text-sm text-muted-foreground">No students found for this class.</div>
             ) : (
@@ -275,7 +289,11 @@ function ManualAttendance({ classId, onSubmit }: ManualAttendanceProps) {
                     <div>
                       <div className="font-medium">{student.name}</div>
                       <div className="text-xs text-muted-foreground">
-                        {student.rollNo ? `Roll: ${student.rollNo}` : student.username ? `User: ${student.username}` : ""}
+                        {student.rollNo
+                          ? `Roll: ${student.rollNo}`
+                          : student.username
+                          ? `User: ${student.username}`
+                          : ""}
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
@@ -289,7 +307,11 @@ function ManualAttendance({ classId, onSubmit }: ManualAttendanceProps) {
                         <Label htmlFor={`present-${student.studentId}`}>Present</Label>
                       </div>
                       {isSelected && (
-                        <Select value={status} onValueChange={(value) => handleStatusChange(student.studentId, value as "present" | "late")} disabled={isSaving}>
+                        <Select
+                          value={status}
+                          onValueChange={(value) => handleStatusChange(student.studentId, value as "present" | "late")}
+                          disabled={isSaving}
+                        >
                           <SelectTrigger className="w-28">
                             <SelectValue />
                           </SelectTrigger>
@@ -314,11 +336,12 @@ function ManualAttendance({ classId, onSubmit }: ManualAttendanceProps) {
           className="w-full"
         >
           <CheckCircle2 className="h-4 w-4 mr-2" />
-          {isSaving ? "Saving?" : "Save Attendance"}
+          {isSaving ? "Saving…" : "Save Attendance"}
         </Button>
       </CardContent>
     </Card>
   )
 }
-export default ManualAttendance;
-export { ManualAttendance };
+
+export default ManualAttendance
+export { ManualAttendance }
