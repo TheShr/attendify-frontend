@@ -2,12 +2,12 @@
 
 import type React from "react"
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { useRouter } from "next/navigation"
 import { Eye, EyeOff, User, Lock, UserCheck } from "lucide-react"
 
 export function LoginForm() {
@@ -27,9 +27,9 @@ export function LoginForm() {
     try {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/login`, {
         method: "POST",
-        credentials: "include", // 🔑 include cookies in request/response
+        credentials: "include", // 🔑 crucial: allow cookies
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password })
+        body: JSON.stringify({ username, password }),
       })
 
       if (!res.ok) {
@@ -37,10 +37,11 @@ export function LoginForm() {
         throw new Error(err.error || "Login failed")
       }
 
+      // backend already sets cookie → no need to store token manually
       const data = await res.json()
+      console.log("Login success:", data)
 
-      // No need to save token in localStorage (cookie is already set by backend)
-      // Just redirect based on userType selection
+      // Redirect based on user type dropdown
       switch (userType) {
         case "teacher":
           router.push("/teacher")
