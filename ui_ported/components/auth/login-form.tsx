@@ -1,107 +1,51 @@
 "use client"
 
 import type React from "react"
+
 import { useState } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Button } from "../ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card"
+import { Input } from "../ui/input"
+import { Label } from "../ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select"
+import { useRouter } from "next/navigation"
 import { Eye, EyeOff, User, Lock, UserCheck } from "lucide-react"
 
-const getApiBase = () => {
-  const base = process.env.NEXT_PUBLIC_API_URL
-  if (!base || base.length === 0) {
-    return null
-  }
-  return base.endsWith("/") ? base.slice(0, -1) : base
-}
-
-type LoginFormProps = {
-  redirectTo?: string | null
-}
-
-export function LoginForm({ redirectTo }: LoginFormProps = {}) {
+export function LoginForm() {
   const [showPassword, setShowPassword] = useState(false)
   const [userType, setUserType] = useState<string | undefined>(undefined)
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const router = useRouter()
-  const searchParams = useSearchParams()
-  const disableAuth = process.env.NEXT_PUBLIC_DISABLE_AUTH === "true"
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
-    setError(null)
-
-    const returnToParam = searchParams.get("returnTo")
-    const resolvedReturnTo = redirectTo ?? returnToParam
-    const safeReturnTo = resolvedReturnTo && resolvedReturnTo.startsWith("/") ? resolvedReturnTo : null
-
-    if (disableAuth) {
-      const destination =
-        safeReturnTo ??
-        (userType === "teacher"
-          ? "/teacher"
-          : userType === "student"
-          ? "/student"
-          : userType === "admin"
-          ? "/admin"
-          : "/")
-
-      router.replace(destination)
-      setIsLoading(false)
-      return
-    }
-
-    const endpointBase = getApiBase()
-    const loginUrl = endpointBase ? `${endpointBase}/auth/login` : "/api/auth/login"
 
     try {
-      const res = await fetch(loginUrl, {
-        method: "POST",
-        credentials: "include", // include cookies for backend JWT
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          username,
-          password,
-          role: userType,
-        }),
-      })
+      // Simulate API call
+      await new Promise((resolve) => setTimeout(resolve, 1000))
 
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        throw new Error(err.error || err.message || "Login failed")
-      }
+      // Store user info in localStorage (in real app, use proper auth)
+      localStorage.setItem("user", JSON.stringify({ username, userType: userType ?? "" }))
 
-      await res.json().catch(() => ({}))
-
-      if (safeReturnTo) {
-        router.replace(safeReturnTo)
-        return
-      }
-
+      // Redirect based on user type
       switch (userType) {
         case "teacher":
-          router.replace("/teacher")
+          router.push("/teacher")
           break
         case "student":
-          router.replace("/student")
+          router.push("/student")
           break
         case "admin":
-          router.replace("/admin")
+          router.push("/admin")
           break
         default:
-          router.replace("/")
           break
       }
-    } catch (err: any) {
-      console.error("Login error:", err)
-      setError(err?.message || "Unexpected error")
+    } catch (error) {
+      console.error("Login failed:", error)
     } finally {
       setIsLoading(false)
     }
@@ -111,9 +55,7 @@ export function LoginForm({ redirectTo }: LoginFormProps = {}) {
     <Card className="w-full shadow-lg">
       <CardHeader className="space-y-1">
         <CardTitle className="text-2xl font-bold text-center">Sign In</CardTitle>
-        <CardDescription className="text-center">
-          Enter your credentials to access your dashboard
-        </CardDescription>
+        <CardDescription className="text-center">Enter your credentials to access your dashboard</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleLogin} className="space-y-4">
@@ -180,8 +122,6 @@ export function LoginForm({ redirectTo }: LoginFormProps = {}) {
               </Button>
             </div>
           </div>
-
-          {error && <p className="text-sm text-red-500">{error}</p>}
 
           <Button type="submit" className="w-full" disabled={isLoading}>
             {isLoading ? "Signing in..." : "Sign In"}
