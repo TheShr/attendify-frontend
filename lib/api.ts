@@ -51,16 +51,26 @@ function buildHeaders(extra?: HeadersInit, skipJson?: boolean): HeadersInit {
   return { ...base, ...(extra as Record<string, string> || {}) };
 }
 
-export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
+export async function apiFetch(path: string, init?: RequestInit & { timeoutMs?: number }): Promise<Response> {
   const url = resolveApiUrl(path);
+  const timeoutMs = init?.timeoutMs ?? 15000;
 
   // Don't add Content-Type for FormData — browser sets it with boundary
   const isFormData = init?.body instanceof FormData;
+  const controller = new AbortController();
+  const signal = controller.signal;
+  const timer = globalThis.setTimeout(() => controller.abort(), timeoutMs);
 
-  const response = await fetch(url, {
-    ...init,
-    headers: buildHeaders(init?.headers as HeadersInit, isFormData),
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...init,
+      headers: buildHeaders(init?.headers as HeadersInit, isFormData),
+      signal,
+    });
+  } finally {
+    globalThis.clearTimeout(timer);
+  }
 
   // Auto-logout on 401
   if (response.status === 401 && typeof window !== "undefined") {

@@ -1,6 +1,8 @@
 ﻿import { NextRequest, NextResponse } from 'next/server'
 import { getApiBase } from '@/lib/api'
 
+export const dynamic = 'force-dynamic'
+
 function buildBackendUrl(path: string, searchParams?: Record<string, string>): string {
   const base = getApiBase().replace(/\/+$/, '')
   const cleanBase = base.endsWith('/api') ? base : `${base}/api`
@@ -23,8 +25,7 @@ function forwardHeaders(req: NextRequest): Record<string, string> {
 
 export async function GET(request: NextRequest) {
   try {
-    const incoming = new URL(request.url)
-    const range = incoming.searchParams.get('range') || 'month'
+    const range = request.nextUrl.searchParams.get('range') || 'month'
     
     const backendUrl = buildBackendUrl('/insights/department', { range })
     console.log(`[Insights Dept Proxy] GET ${backendUrl}`)
